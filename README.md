@@ -25,7 +25,7 @@ $ unzip dynet.zip; cd dynet
 $ hg clone https://bitbucket.org/eigen/eigen/ -r 2355b22
 $ mkdir build; cd build
 $ cmake .. -DEIGEN3_INCLUDE_DIR=../eigen
-$ make
+$ make -j 4
 ```
 
 ### haskell-stackのインストール

@@ -64,7 +64,7 @@ getTokens (Leaf t) = [t]
 
 -------- Reading trees
 lexer :: T.Text -> [Token]
-lexer = T.split (==' ')
+lexer = T.split (==' ') . T.toLower
 
 parser :: [Token] -> Tree
 parser = head . foldl parse []
@@ -182,3 +182,4 @@ makeVocab :: Int -> [(Label, Tree, Tree)] -> [Token]
 makeVocab threshold ts = foldl makeVocab' [] $ wordCount $ concatMap getTokens2 ts
     where getTokens2 (_, t1, t2) = getTokens t1 ++ getTokens t2
           makeVocab' ws (w, f) = if f >= threshold then w : ws else ws
+

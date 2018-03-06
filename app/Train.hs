@@ -11,6 +11,7 @@ import qualified DyNet.Expr as D
 import qualified DyNet.RNN as D
 import qualified DyNet.Dict as D
 import qualified DyNet.Train as D
+import qualified DyNet.IO as D
 import qualified DyNet.Vector as V
 
 import qualified TreeLSTM as T
@@ -48,7 +49,7 @@ main = do
     let batchX = T.makeBatch 500 trainX
         evalCycle = min 8 (length batchX)
 
-    forM_ [1..iteration] $  \_ -> do
+    forM_ [1..iteration] $  \iter -> do
         forM_ (zip [1..] batchX) $ \(i, xs) -> do
             loss <- T.train trainer pW1 pb1 pW2 pb2 lstm xs
             D.status trainer
@@ -60,6 +61,7 @@ main = do
                         res <- V.toList =<< D.asVector =<< D.forward cg r
                         return $ D.argmax res
                 putStrLn $ "accuracy: " ++ show (T.accuracy predY evalY)
+                saver <- D.createSaver' $ "models/rte_" ++ show iter ++ "_" ++ show i ++ ".model"
+                D.saveModel' saver m
         D.updateEpoch trainer 1.0
-
 

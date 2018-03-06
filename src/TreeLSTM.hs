@@ -1,11 +1,32 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 
+module TreeLSTM (
+    Token,
+    Label,
+    Tree(..),
+    label,
+    lshow,
+    getTokens,
+    parseLine,
+    readTrees,
+    TreeLSTM(..),
+    createTreeLSTM,
+    exprForTree,
+    predict,
+    train,
+    makeBatch,
+    accuracy,
+    wordCount,
+    makeVocab
+) where
+
 import Control.Monad
 import Control.Arrow ( (&&&) )
 import Data.List ( sort, group )
 import System.Environment ( getArgs )
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 
 import qualified DyNet.Core as D
 import qualified DyNet.Expr as D
@@ -14,6 +35,7 @@ import qualified DyNet.Dict as D
 import qualified DyNet.Train as D
 import qualified DyNet.Vector as V
 
+-------- Some types
 type Token = T.Text
 
 type Label = Int
@@ -25,7 +47,7 @@ instance Show Tree where
     show (Node l r) = "( " ++ show l ++ " " ++ show r ++ " )"
     show (Leaf w)   = "( " ++ T.unpack w ++ " )"
 
-label :: String -> Label
+label :: T.Text -> Label
 label "entailment"    = 0
 label "contradiction" = 1
 label "neutral"       = 2
@@ -40,14 +62,8 @@ getTokens (Node l r) = getTokens l ++ getTokens r
 getTokens (Leaf t) = [t]
 
 -------- Reading trees
-split :: Char -> String -> [String]
-split s xs = case break (==s) xs of
-    ([], [])  -> []
-    (y,  [])  -> [y]
-    (y, _:ys) -> y : split s ys
-
-lexer :: String -> [Token]
-lexer = T.split (==' ') . T.pack
+lexer :: T.Text -> [Token]
+lexer = T.split (==' ')
 
 parser :: [Token] -> Tree
 parser = head . foldl parse []
@@ -55,15 +71,15 @@ parser = head . foldl parse []
           parse stack             "(" = stack
           parse stack              t  = Leaf t : stack
 
-parseLine :: [String] -> (Label, Tree, Tree)
+parseLine :: [T.Text] -> (Label, Tree, Tree)
 parseLine (l : t1 : t2 : _) = (label l, parse t1, parse t2)
     where parse = parser . lexer
 
 readTrees :: String -> IO [(Label, Tree, Tree)]
 readTrees fileName = do
-    (_:contents) <- lines <$> readFile fileName
-    let filtered = filter (\(s:_) -> s /= '-') contents
-    return $ map (parseLine . split '\t') filtered
+    (_:contents) <- T.lines <$> T.readFile fileName
+    let filtered = filter (\c -> T.head c /= '-') contents
+    return $ map (parseLine . T.split (=='\t')) filtered
 
 
 -------- TreeLSTM
@@ -165,51 +181,4 @@ makeVocab :: Int -> [(Label, Tree, Tree)] -> [Token]
 makeVocab threshold ts = foldl makeVocab' [] $ wordCount $ concatMap getTokens2 ts
     where getTokens2 (_, t1, t2) = getTokens t1 ++ getTokens t2
           makeVocab' ws (w, f) = if f >= threshold then w : ws else ws
-
--------- Hyperparameters
-iteration = 30
-embed_dim = 80
-hidden_dim = 50
-affine_dim = 100
-label_size = 3
-threshold = 3
-
-
-main = do
-    argv <- getArgs
-    (trainData : evalData : _) <- D.initialize' argv
-    trainX <- readTrees trainData
-    evalX  <- readTrees evalData
-    let evalY = map (\(l, _, _) -> l) evalX
-        vocab = makeVocab threshold trainX
-
-    putStrLn $ "(embed_dim,hidden_dim,affine_dim) = " ++ show (embed_dim, hidden_dim,affine_dim)
-    putStrLn $ "sizes of (trainX, evalX) = " ++ show (length trainX, length evalX)
-    putStrLn $ "vocabulary size: " ++ show (length vocab)
-    putStrLn $ "number of labels: " ++ show label_size
-
-    m <- D.createModel
-    pW1 <- D.addParameters' m [affine_dim, hidden_dim * 4]
-    pb1 <- D.addParameters' m [affine_dim]
-    pW2 <- D.addParameters' m [label_size, affine_dim]
-    pb2 <- D.addParameters' m [label_size]
-    trainer <- D.createAdamTrainer' m
-    lstm <- createTreeLSTM m vocab embed_dim hidden_dim
-
-    let batchX = makeBatch 500 trainX
-        evalCycle = min 8 (length batchX)
-
-    forM_ [1..iteration] $  \_ -> do
-        forM_ (zip [1..] batchX) $ \(i, xs) -> do
-            loss <- train trainer pW1 pb1 pW2 pb2 lstm xs
-            D.status trainer
-            print loss
-            when (i `mod` evalCycle == 0) $ do
-                predY <- forM evalX $ \(l, t1, t2) ->
-                    D.withNewComputationGraph $ \cg -> do
-                        r <- predict cg pW1 pb1 pW2 pb2 lstm t1 t2
-                        res <- V.toList =<< D.asVector =<< D.forward cg r
-                        return $ D.argmax res
-                putStrLn $ "accuracy: " ++ show (accuracy predY evalY)
-        D.updateEpoch trainer 1.0
 

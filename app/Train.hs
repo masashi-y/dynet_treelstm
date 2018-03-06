@@ -47,7 +47,7 @@ main = do
     lstm <- T.createTreeLSTM m vocab embed_dim hidden_dim
 
     let batchX = T.makeBatch 500 trainX
-        evalCycle = min 8 (length batchX)
+        evalCycle = min 100 (length batchX)
 
     forM_ [1..iteration] $  \iter -> do
         forM_ (zip [1..] batchX) $ \(i, xs) -> do

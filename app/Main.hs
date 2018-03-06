@@ -13,6 +13,7 @@ import qualified DyNet.RNN as D
 import qualified DyNet.Dict as D
 import qualified DyNet.Train as D
 import qualified DyNet.Vector as V
+import qualified DyNet.IO as D
 
 type Token = T.Text
 
@@ -128,7 +129,7 @@ predict cg pW1 pb1 pW2 pb2 lstm t1 t2 = do
     (h1, _) <- exprForTree cg lstm t1
     (h2, _) <- exprForTree cg lstm t2
     mult <- D.cmult h1 h2
-    sub <- D.sub h1 h2
+    sub <- D.abs $ D.sub h1 h2
     h <- D.concat' [h1, h2, mult, sub]
     a <- D.rectify $ D.affineTransform [b1, _W1, h]
     D.affineTransform [b2, _W2, a]
@@ -137,16 +138,16 @@ predict cg pW1 pb1 pW2 pb2 lstm t1 t2 = do
 train :: D.Trainer t => t -> D.Parameter -> D.Parameter
       -> D.Parameter -> D.Parameter
       -> TreeLSTM -> [(Label, Tree, Tree)] -> IO Float
-train trainer pW1 pb1 pW2 pb2 lstm ts = do
-    losses <- forM ts $ \(l, t1, t2) ->
-        D.withNewComputationGraph $ \cg -> do
-            r <- predict cg pW1 pb1 pW2 pb2 lstm t1 t2
-            lossExp <- D.pickneglogsoftmax r l
-            loss <- D.asScalar =<< D.forward cg lossExp
-            D.backward cg lossExp
-            D.update' trainer
-            return loss
-    return $ sum losses / realToFrac (length losses)
+train trainer pW1 pb1 pW2 pb2 lstm ts =
+    D.withNewComputationGraph $ \cg -> do
+        losses <- forM ts $ \(l, t1, t2) -> do
+                r <- predict cg pW1 pb1 pW2 pb2 lstm t1 t2
+                D.pickneglogsoftmax r l
+        lossExp <- D.sum losses
+        loss <- D.asScalar =<< D.forward cg lossExp
+        D.backward cg lossExp
+        D.update' trainer
+        return $ loss / realToFrac (length losses)
 
 
 -------- Utility functions
@@ -168,9 +169,9 @@ makeVocab threshold ts = foldl makeVocab' [] $ wordCount $ concatMap getTokens2 
 
 -------- Hyperparameters
 iteration = 30
-embed_dim = 80
-hidden_dim = 50
-affine_dim = 100
+embed_dim = 100
+hidden_dim = 100
+affine_dim = 200
 label_size = 3
 threshold = 3
 
@@ -197,9 +198,9 @@ main = do
     lstm <- createTreeLSTM m vocab embed_dim hidden_dim
 
     let batchX = makeBatch 500 trainX
-        evalCycle = min 8 (length batchX)
+        evalCycle = min 100 (length batchX)
 
-    forM_ [1..iteration] $  \_ -> do
+    forM_ [1..iteration] $  \iter -> do
         forM_ (zip [1..] batchX) $ \(i, xs) -> do
             loss <- train trainer pW1 pb1 pW2 pb2 lstm xs
             D.status trainer
@@ -211,5 +212,7 @@ main = do
                         res <- V.toList =<< D.asVector =<< D.forward cg r
                         return $ D.argmax res
                 putStrLn $ "accuracy: " ++ show (accuracy predY evalY)
+                saver <- D.createSaver' $ "models/rte_" ++ show iter ++ "_" ++ show i ++ ".model"
+                D.saveModel' saver m
         D.updateEpoch trainer 1.0
 

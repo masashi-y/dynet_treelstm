@@ -154,17 +154,27 @@ predict cg pW1 pb1 pW2 pb2 lstm t1 t2 = do
 train :: D.Trainer t => t -> D.Parameter -> D.Parameter
       -> D.Parameter -> D.Parameter
       -> TreeLSTM -> [(Label, Tree, Tree)] -> IO Float
-train trainer pW1 pb1 pW2 pb2 lstm ts =
-    D.withNewComputationGraph $ \cg -> do
-        losses <- forM ts $ \(l, t1, t2) -> do
-                r <- predict cg pW1 pb1 pW2 pb2 lstm t1 t2
-                D.pickneglogsoftmax r l
-        lossExp <- D.sum losses
-        loss <- D.asScalar =<< D.forward cg lossExp
-        D.backward cg lossExp
-        D.update' trainer
-        return $ loss / realToFrac (length losses)
+-- train trainer pW1 pb1 pW2 pb2 lstm ts =
+--     D.withNewComputationGraph $ \cg -> do
+--         losses <- forM ts $ \(l, t1, t2) -> do
+--                 r <- predict cg pW1 pb1 pW2 pb2 lstm t1 t2
+--                 D.pickneglogsoftmax r l
+--         lossExp <- D.sum losses
+--         loss <- D.asScalar =<< D.forward cg lossExp
+--         D.backward cg lossExp
+--         D.update' trainer
+--         return $ loss / realToFrac (length losses)
 
+train trainer pW1 pb1 pW2 pb2 lstm ts = do
+    losses <- forM ts $ \(l, t1, t2) ->
+        D.withNewComputationGraph $ \cg -> do
+            r <- predict cg pW1 pb1 pW2 pb2 lstm t1 t2
+            lossExp <- D.pickneglogsoftmax r l
+            loss <- D.asScalar =<< D.forward cg lossExp
+            D.backward cg lossExp
+            D.update' trainer
+            return loss
+    return $ sum losses / realToFrac (length losses)
 
 -------- Utility functions
 makeBatch :: Int -> [a] -> [[a]]

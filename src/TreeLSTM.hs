@@ -34,6 +34,7 @@ import qualified DyNet.RNN as D
 import qualified DyNet.Dict as D
 import qualified DyNet.Train as D
 import qualified DyNet.Vector as V
+import qualified DyNet.IO as D
 
 -------- Some types
 type Token = T.Text
@@ -63,7 +64,7 @@ getTokens (Leaf t) = [t]
 
 -------- Reading trees
 lexer :: T.Text -> [Token]
-lexer = T.split (==' ')
+lexer = T.split (==' ') . T.toLower
 
 parser :: [Token] -> Tree
 parser = head . foldl parse []
@@ -144,7 +145,7 @@ predict cg pW1 pb1 pW2 pb2 lstm t1 t2 = do
     (h1, _) <- exprForTree cg lstm t1
     (h2, _) <- exprForTree cg lstm t2
     mult <- D.cmult h1 h2
-    sub <- D.sub h1 h2
+    sub <- D.abs $ D.sub h1 h2
     h <- D.concat' [h1, h2, mult, sub]
     a <- D.rectify $ D.affineTransform [b1, _W1, h]
     D.affineTransform [b2, _W2, a]
@@ -153,6 +154,17 @@ predict cg pW1 pb1 pW2 pb2 lstm t1 t2 = do
 train :: D.Trainer t => t -> D.Parameter -> D.Parameter
       -> D.Parameter -> D.Parameter
       -> TreeLSTM -> [(Label, Tree, Tree)] -> IO Float
+-- train trainer pW1 pb1 pW2 pb2 lstm ts =
+--     D.withNewComputationGraph $ \cg -> do
+--         losses <- forM ts $ \(l, t1, t2) -> do
+--                 r <- predict cg pW1 pb1 pW2 pb2 lstm t1 t2
+--                 D.pickneglogsoftmax r l
+--         lossExp <- D.sum losses
+--         loss <- D.asScalar =<< D.forward cg lossExp
+--         D.backward cg lossExp
+--         D.update' trainer
+--         return $ loss / realToFrac (length losses)
+
 train trainer pW1 pb1 pW2 pb2 lstm ts = do
     losses <- forM ts $ \(l, t1, t2) ->
         D.withNewComputationGraph $ \cg -> do
@@ -163,7 +175,6 @@ train trainer pW1 pb1 pW2 pb2 lstm ts = do
             D.update' trainer
             return loss
     return $ sum losses / realToFrac (length losses)
-
 
 -------- Utility functions
 makeBatch :: Int -> [a] -> [[a]]

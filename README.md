@@ -54,6 +54,12 @@ $ find .stack-work -name "libdynetc.so" # (すこし辛い作業)
 export DYLD_LIBRARY_PATH=.stack-work//downloaded/rDD2a0f1la0a/c
 # linux
 export LD_LIBRARY_PATH=.stack-work/downloaded/rDD2a0f1la0a/c
-# 学習開始!
-$ stack exec rte data/snli_1.0/snli_1.0_train.txt data/snli_1.0/snli_1.0_dev.txt
+```
+
+モデル: https://cl.naist.jp/~masashi-y/resources/rte.model
+```sh
+# 学習
+$ stack exec train data/snli_1.0/snli_1.0_train.txt data/snli_1.0/snli_1.0_dev.txt
+# 予測
+$ stack exec predict rte.model data/snli_1.0/snli_1.0_train.txt data/snli_1.0/snli_1.0_dev.txt
 ```
